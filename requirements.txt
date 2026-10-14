@@ -1,0 +1,19 @@
+# Universal File Converter - Python Dependencies
+# Install via: pip install -r requirements.txt
+
+# GUI Framework & Native Styling
+customtkinter>=6.0.0
+tkinterdnd2>=2.10.3
+
+# PDF Processing & Engine
+pymupdf>=1.24.0
+pdf2docx>=0.5.8
+pdfplumber>=0.11.0
+openpyxl>=3.1.0
+
+# Image & Text Processing
+pillow>=10.0.0
+reportlab>=4.0.0
+
+# Windows System Integration & Office Automation
+pywin32>=306
