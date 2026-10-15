@@ -13,6 +13,7 @@ dist/
 # User local settings & cache
 .universal_file_converter.json
 *.lnk
+CONVERSATION_HISTORY.md
 
 # Virtual Environments
 venv/
