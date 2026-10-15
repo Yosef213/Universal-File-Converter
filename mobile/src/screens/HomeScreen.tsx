@@ -17,9 +17,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
           <Ionicons name="shield-checkmark" size={28} color={colors.emerald} />
         </View>
         <View style={styles.bannerTextContainer}>
-          <Text style={styles.bannerTitle}>100% On-Device & Private</Text>
+          <Text style={styles.bannerTitle}>100% On-Device & Offline</Text>
           <Text style={styles.bannerSubtitle}>
-            Zero cloud uploads. Your files never leave this device.
+            Zero servers, zero tracking. All document and image operations stay private on your phone.
           </Text>
         </View>
       </View>
@@ -41,13 +41,39 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
             <Ionicons name="chevron-forward" size={18} color={colors.textDim} />
           </View>
           <Text style={styles.cardDescription}>
-            Merge multiple PDFs, split pages, extract ranges, and rotate orientation.
+            Convert to Word/Excel/Text/Images, merge, split, extract, rotate, compress, and password protect.
           </Text>
           <View style={styles.tagRow}>
+            <View style={styles.tag}><Text style={styles.tagText}>To Word</Text></View>
+            <View style={styles.tag}><Text style={styles.tagText}>To Excel</Text></View>
             <View style={styles.tag}><Text style={styles.tagText}>Merge</Text></View>
-            <View style={styles.tag}><Text style={styles.tagText}>Split</Text></View>
-            <View style={styles.tag}><Text style={styles.tagText}>Extract</Text></View>
-            <View style={styles.tag}><Text style={styles.tagText}>Rotate</Text></View>
+            <View style={styles.tag}><Text style={styles.tagText}>Compress</Text></View>
+            <View style={styles.tag}><Text style={styles.tagText}>Protect</Text></View>
+          </View>
+        </View>
+      </TouchableOpacity>
+
+      {/* Word & Documents Studio Card */}
+      <TouchableOpacity
+        style={styles.card}
+        activeOpacity={0.7}
+        onPress={() => onNavigate('docs')}
+      >
+        <View style={[styles.cardIconBox, { backgroundColor: colors.amberLight }]}>
+          <Ionicons name="reader" size={28} color={colors.amber} />
+        </View>
+        <View style={styles.cardInfo}>
+          <View style={styles.cardTitleRow}>
+            <Text style={styles.cardTitle}>Word & Documents Studio</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.textDim} />
+          </View>
+          <Text style={styles.cardDescription}>
+            Convert Word (.docx) documents to PDF, render text/markdown/CSV files, or export quick notes.
+          </Text>
+          <View style={styles.tagRow}>
+            <View style={styles.tag}><Text style={styles.tagText}>Word → PDF</Text></View>
+            <View style={styles.tag}><Text style={styles.tagText}>Text → PDF</Text></View>
+            <View style={styles.tag}><Text style={styles.tagText}>Markdown</Text></View>
           </View>
         </View>
       </TouchableOpacity>
@@ -67,36 +93,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
             <Ionicons name="chevron-forward" size={18} color={colors.textDim} />
           </View>
           <Text style={styles.cardDescription}>
-            Combine photos into multi-page PDFs, convert formats (PNG, JPG, WEBP), and compress size.
+            Combine photos into multi-page PDFs, convert formats (PNG, JPG, WEBP), and resize / compress.
           </Text>
           <View style={styles.tagRow}>
-            <View style={styles.tag}><Text style={styles.tagText}>To PDF</Text></View>
+            <View style={styles.tag}><Text style={styles.tagText}>Images to PDF</Text></View>
             <View style={styles.tag}><Text style={styles.tagText}>Convert</Text></View>
-            <View style={styles.tag}><Text style={styles.tagText}>Compress</Text></View>
-          </View>
-        </View>
-      </TouchableOpacity>
-
-      {/* Text Studio Card */}
-      <TouchableOpacity
-        style={styles.card}
-        activeOpacity={0.7}
-        onPress={() => onNavigate('text')}
-      >
-        <View style={[styles.cardIconBox, { backgroundColor: colors.amberLight }]}>
-          <Ionicons name="create" size={28} color={colors.amber} />
-        </View>
-        <View style={styles.cardInfo}>
-          <View style={styles.cardTitleRow}>
-            <Text style={styles.cardTitle}>Text & Notes to PDF</Text>
-            <Ionicons name="chevron-forward" size={18} color={colors.textDim} />
-          </View>
-          <Text style={styles.cardDescription}>
-            Type or paste text and export crisp, paginated PDF documents with page numbers.
-          </Text>
-          <View style={styles.tagRow}>
-            <View style={styles.tag}><Text style={styles.tagText}>Text to PDF</Text></View>
-            <View style={styles.tag}><Text style={styles.tagText}>Markdown</Text></View>
+            <View style={styles.tag}><Text style={styles.tagText}>Resize (25-100%)</Text></View>
           </View>
         </View>
       </TouchableOpacity>
@@ -112,11 +114,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate }) => {
         </View>
         <View style={styles.cardInfo}>
           <View style={styles.cardTitleRow}>
-            <Text style={styles.cardTitle}>Converted Files</Text>
+            <Text style={styles.cardTitle}>Converted Documents</Text>
             <Ionicons name="chevron-forward" size={18} color={colors.textDim} />
           </View>
           <Text style={styles.cardDescription}>
-            Access your processed documents, share via AirDrop/WhatsApp, or save to device storage.
+            Manage converted files, share to AirDrop / WhatsApp, or export to your phone's Downloads folder.
           </Text>
         </View>
       </TouchableOpacity>

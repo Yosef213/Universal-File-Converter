@@ -1,4 +1,4 @@
-export type StudioTab = 'home' | 'pdf' | 'image' | 'text' | 'history';
+export type StudioTab = 'home' | 'pdf' | 'image' | 'docs' | 'history';
 
 export interface FileItem {
   id: string;
@@ -6,43 +6,13 @@ export interface FileItem {
   uri: string;
   size?: number;
   mimeType?: string;
-  type: 'pdf' | 'image' | 'text' | 'other';
+  type: 'pdf' | 'image' | 'text' | 'word' | 'other';
 }
 
-export interface ProcessedItem {
-  id: string;
-  name: string;
-  uri: string;
-  size: number;
-  date: string;
-  operation: string;
-  type: 'pdf' | 'image' | 'text';
+/** Result of any conversion: one or more output file URIs plus a summary line. */
+export interface JobResult {
+  outputs: string[];
+  summary: string;
 }
 
-export type PdfOperation = 
-  | 'merge'
-  | 'split'
-  | 'extract'
-  | 'rotate'
-  | 'protect'
-  | 'decrypt'
-  | 'images_to_pdf';
-
-export type ImageOperation = 
-  | 'convert'
-  | 'resize'
-  | 'compress'
-  | 'combine_pdf';
-
-export interface PdfOptions {
-  pageRange?: string;
-  rotationDegrees?: 90 | 180 | 270;
-  password?: string;
-  pageSize?: 'fit' | 'a4' | 'letter';
-}
-
-export interface ImageOptions {
-  format?: 'png' | 'jpeg' | 'webp';
-  quality?: number; // 0 - 100
-  scale?: number; // 25, 50, 75, 100
-}
+export type ProgressFn = (done: number, total: number, label?: string) => void;

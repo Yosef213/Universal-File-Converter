@@ -1,303 +1,240 @@
-import { PDFDocument, degrees, StandardFonts, rgb } from 'pdf-lib';
-import * as ImageManipulator from 'expo-image-manipulator';
+import { PDFDocument, degrees, StandardFonts, rgb } from '@cantoo/pdf-lib';
+import { toByteArray } from 'base64-js';
+import { callEngine } from '../engine/EngineHost';
 import { FileService } from './fileService';
+import { JobResult, ProgressFn } from '../types';
+import { PageText, parsePageRange, toParagraphs, pageToGrid, pageToPlainText } from './textLayout';
+
+export type CompressLevel = 'light' | 'balanced' | 'strong';
+
+let docCounter = 0;
+
+/** Opens a PDF in the WebView engine (pdf.js), runs fn, and always closes it. */
+async function withEnginePdf<T>(
+  uri: string,
+  password: string | undefined,
+  fn: (id: string, numPages: number) => Promise<T>
+): Promise<T> {
+  const id = `d${++docCounter}`;
+  const data = await FileService.readBase64(uri);
+  const { numPages } = await callEngine<{ numPages: number }>('openPdf', { id, data, password });
+  try {
+    return await fn(id, numPages);
+  } finally {
+    await callEngine('closePdf', { id }).catch(() => {});
+  }
+}
+
+async function loadLib(uri: string, password?: string): Promise<PDFDocument> {
+  const bytes = await FileService.readFileAsBytes(uri);
+  return PDFDocument.load(bytes, password ? { password } : { ignoreEncryption: true });
+}
+
+const pageText = (id: string, page: number) => callEngine<PageText>('pageText', { id, page });
 
 export class PdfEngine {
-  /**
-   * Merge multiple PDF files in order into a single unified PDF
-   */
-  static async mergePdfs(fileUris: string[], outputName: string = 'Merged_Document.pdf'): Promise<string> {
-    if (fileUris.length < 2) {
-      throw new Error('Please select at least 2 PDF files to merge.');
-    }
+  // ---------------------------------------------------------------- conversions
 
-    const mergedPdf = await PDFDocument.create();
-
-    for (const uri of fileUris) {
-      const bytes = await FileService.readFileAsBytes(uri);
-      const donorPdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
-      const copiedPages = await mergedPdf.copyPages(donorPdf, donorPdf.getPageIndices());
-      copiedPages.forEach((page) => mergedPdf.addPage(page));
-    }
-
-    const pdfBytes = await mergedPdf.save();
-    return await FileService.saveBytesToFile(pdfBytes, outputName);
-  }
-
-  /**
-   * Split all pages of a PDF into individual 1-page PDF documents
-   */
-  static async splitPdf(fileUri: string, baseName: string = 'Page'): Promise<string[]> {
-    const bytes = await FileService.readFileAsBytes(fileUri);
-    const sourcePdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
-    const pageCount = sourcePdf.getPageCount();
-    const outputUris: string[] = [];
-
-    for (let i = 0; i < pageCount; i++) {
-      const singleDoc = await PDFDocument.create();
-      const [copiedPage] = await singleDoc.copyPages(sourcePdf, [i]);
-      singleDoc.addPage(copiedPage);
-
-      const singleBytes = await singleDoc.save();
-      const outputUri = await FileService.saveBytesToFile(
-        singleBytes,
-        `${baseName}_${i + 1}_of_${pageCount}.pdf`
-      );
-      outputUris.push(outputUri);
-    }
-
-    return outputUris;
-  }
-
-  /**
-   * Extract specific page sequences (e.g. "1-3, 5, 8") into a new PDF
-   */
-  static async extractPages(
-    fileUri: string,
-    pageRangeStr: string,
-    outputName: string = 'Extracted_Pages.pdf'
-  ): Promise<string> {
-    const bytes = await FileService.readFileAsBytes(fileUri);
-    const sourcePdf = await PDFDocument.load(bytes, { ignoreEncryption: true });
-    const totalPages = sourcePdf.getPageCount();
-
-    const pageIndices = this.parsePageRange(pageRangeStr, totalPages);
-    if (pageIndices.length === 0) {
-      throw new Error('No valid pages found in the specified range.');
-    }
-
-    const newDoc = await PDFDocument.create();
-    const copiedPages = await newDoc.copyPages(sourcePdf, pageIndices);
-    copiedPages.forEach((page) => newDoc.addPage(page));
-
-    const pdfBytes = await newDoc.save();
-    return await FileService.saveBytesToFile(pdfBytes, outputName);
-  }
-
-  /**
-   * Rotate pages clockwise (90, 180, 270 degrees)
-   */
-  static async rotatePdf(
-    fileUri: string,
-    angleDegrees: 90 | 180 | 270,
-    pageRangeStr?: string,
-    outputName: string = 'Rotated_Document.pdf'
-  ): Promise<string> {
-    const bytes = await FileService.readFileAsBytes(fileUri);
-    const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-    const totalPages = pdfDoc.getPageCount();
-
-    const targetIndices = pageRangeStr
-      ? this.parsePageRange(pageRangeStr, totalPages)
-      : pdfDoc.getPageIndices();
-
-    targetIndices.forEach((index) => {
-      const page = pdfDoc.getPage(index);
-      const currentRotation = page.getRotation().angle;
-      page.setRotation(degrees((currentRotation + angleDegrees) % 360));
+  static async toWord(uri: string, name: string, range?: string, onProgress?: ProgressFn): Promise<JobResult> {
+    return withEnginePdf(uri, undefined, async (id, total) => {
+      const pages = parsePageRange(range, total);
+      const paragraphs: { text: string; pageBreakBefore?: boolean }[] = [];
+      for (let i = 0; i < pages.length; i++) {
+        onProgress?.(i, pages.length, `Reading page ${pages[i] + 1}`);
+        const paras = toParagraphs(await pageText(id, pages[i]));
+        paras.forEach((t, j) => paragraphs.push({ text: t.replace(/\n/g, ' '), pageBreakBefore: i > 0 && j === 0 }));
+      }
+      if (!paragraphs.length) throw new Error('No selectable text found. The PDF may be a scanned image.');
+      const { data } = await callEngine<{ data: string }>('buildDocx', { paragraphs });
+      const out = await FileService.saveBase64(data, `${FileService.baseName(name)}.docx`);
+      return { outputs: [out], summary: `${pages.length} page(s) converted to Word` };
     });
-
-    const pdfBytes = await pdfDoc.save();
-    return await FileService.saveBytesToFile(pdfBytes, outputName);
   }
 
-  /**
-   * Convert multiple images into a clean multi-page or single PDF
-   */
-  static async imagesToPdf(
-    imageUris: string[],
-    layout: 'fit' | 'a4' = 'fit',
-    outputName: string = 'Images_Combined.pdf'
-  ): Promise<string> {
-    if (imageUris.length === 0) {
-      throw new Error('Please select at least one image.');
-    }
-
-    const pdfDoc = await PDFDocument.create();
-
-    // Standard A4 dimensions in points (72 points per inch)
-    const A4_WIDTH = 595.28;
-    const A4_HEIGHT = 841.89;
-    const MARGIN = 36; // 0.5 inch margin
-
-    for (const imgUri of imageUris) {
-      // Normalize image to JPEG format using expo-image-manipulator for 100% pdf-lib compatibility
-      const manipResult = await ImageManipulator.manipulateAsync(
-        imgUri,
-        [],
-        { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
-      );
-
-      const imgBytes = await FileService.readFileAsBytes(manipResult.uri);
-      const embeddedImage = await pdfDoc.embedJpg(imgBytes);
-
-      const imgWidth = embeddedImage.width;
-      const imgHeight = embeddedImage.height;
-
-      if (layout === 'a4') {
-        const page = pdfDoc.addPage([A4_WIDTH, A4_HEIGHT]);
-        const availWidth = A4_WIDTH - MARGIN * 2;
-        const availHeight = A4_HEIGHT - MARGIN * 2;
-
-        const scale = Math.min(availWidth / imgWidth, availHeight / imgHeight, 1);
-        const finalWidth = imgWidth * scale;
-        const finalHeight = imgHeight * scale;
-
-        const x = MARGIN + (availWidth - finalWidth) / 2;
-        const y = MARGIN + (availHeight - finalHeight) / 2;
-
-        page.drawImage(embeddedImage, {
-          x,
-          y,
-          width: finalWidth,
-          height: finalHeight,
-        });
-      } else {
-        // Fit exactly to image resolution
-        const page = pdfDoc.addPage([imgWidth, imgHeight]);
-        page.drawImage(embeddedImage, {
-          x: 0,
-          y: 0,
-          width: imgWidth,
-          height: imgHeight,
-        });
+  static async toExcel(uri: string, name: string, range?: string, onProgress?: ProgressFn): Promise<JobResult> {
+    return withEnginePdf(uri, undefined, async (id, total) => {
+      const pages = parsePageRange(range, total);
+      const sheets: { name: string; rows: string[][] }[] = [];
+      for (let i = 0; i < pages.length; i++) {
+        onProgress?.(i, pages.length, `Analysing page ${pages[i] + 1}`);
+        sheets.push({ name: `Page ${pages[i] + 1}`, rows: pageToGrid(await pageText(id, pages[i])) });
       }
-    }
-
-    const pdfBytes = await pdfDoc.save();
-    return await FileService.saveBytesToFile(pdfBytes, outputName);
+      const { data } = await callEngine<{ data: string }>('buildXlsx', { sheets });
+      const out = await FileService.saveBase64(data, `${FileService.baseName(name)}.xlsx`);
+      return { outputs: [out], summary: `${pages.length} sheet(s) exported to Excel` };
+    });
   }
 
-  /**
-   * Render clean text / markdown into a paginated PDF document
-   */
-  static async textToPdf(
-    text: string,
-    title: string = 'Document',
-    outputName: string = 'Text_Document.pdf'
-  ): Promise<string> {
-    const pdfDoc = await PDFDocument.create();
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-
-    const PAGE_WIDTH = 595.28;
-    const PAGE_HEIGHT = 841.89;
-    const MARGIN = 48;
-    const FONT_SIZE = 11;
-    const LINE_HEIGHT = 16;
-    const USABLE_WIDTH = PAGE_WIDTH - MARGIN * 2;
-    const USABLE_HEIGHT = PAGE_HEIGHT - MARGIN * 2;
-
-    const rawLines = text.split('\n');
-    const wrappedLines: string[] = [];
-
-    // Simple word wrapping
-    for (const rawLine of rawLines) {
-      if (rawLine.trim() === '') {
-        wrappedLines.push('');
-        continue;
+  static async extractText(uri: string, name: string, range?: string, onProgress?: ProgressFn): Promise<JobResult> {
+    return withEnginePdf(uri, undefined, async (id, total) => {
+      const pages = parsePageRange(range, total);
+      const chunks: string[] = [];
+      for (let i = 0; i < pages.length; i++) {
+        onProgress?.(i, pages.length, `Reading page ${pages[i] + 1}`);
+        chunks.push(`--- Page ${pages[i] + 1} ---\n${pageToPlainText(await pageText(id, pages[i]))}`);
       }
-      const words = rawLine.split(' ');
-      let currentLine = '';
+      const out = await FileService.saveText(chunks.join('\n\n'), `${FileService.baseName(name)}.txt`);
+      return { outputs: [out], summary: `Text extracted from ${pages.length} page(s)` };
+    });
+  }
 
-      for (const word of words) {
-        const testLine = currentLine ? `${currentLine} ${word}` : word;
-        const width = font.widthOfTextAtSize(testLine, FONT_SIZE);
-        if (width <= USABLE_WIDTH) {
-          currentLine = testLine;
-        } else {
-          wrappedLines.push(currentLine);
-          currentLine = word;
-        }
-      }
-      if (currentLine) {
-        wrappedLines.push(currentLine);
-      }
-    }
-
-    const linesPerPage = Math.floor((USABLE_HEIGHT - 40) / LINE_HEIGHT);
-    const totalPages = Math.max(1, Math.ceil(wrappedLines.length / linesPerPage));
-
-    for (let p = 0; p < totalPages; p++) {
-      const page = pdfDoc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
-      let y = PAGE_HEIGHT - MARGIN;
-
-      // Header on first page
-      if (p === 0 && title) {
-        page.drawText(title, {
-          x: MARGIN,
-          y: y - 10,
-          size: 18,
-          font: boldFont,
-          color: rgb(0.1, 0.1, 0.15),
+  static async toImages(
+    uri: string,
+    name: string,
+    opts: { range?: string; dpi: number; format: 'png' | 'jpg'; quality: number },
+    onProgress?: ProgressFn
+  ): Promise<JobResult> {
+    return withEnginePdf(uri, undefined, async (id, total) => {
+      const pages = parsePageRange(opts.range, total);
+      const outputs: string[] = [];
+      const mime = opts.format === 'png' ? 'image/png' : 'image/jpeg';
+      for (let i = 0; i < pages.length; i++) {
+        onProgress?.(i, pages.length, `Rendering page ${pages[i] + 1}`);
+        const r = await callEngine<{ data: string }>('renderPage', {
+          id,
+          page: pages[i],
+          scale: opts.dpi / 72,
+          mime,
+          quality: opts.quality / 100,
         });
-        y -= 40;
+        outputs.push(
+          await FileService.saveBase64(r.data, `${FileService.baseName(name)}_page${pages[i] + 1}.${opts.format}`)
+        );
       }
+      return { outputs, summary: `${outputs.length} page image(s) at ${opts.dpi} DPI` };
+    });
+  }
 
-      // Draw page lines
-      const start = p * linesPerPage;
-      const end = Math.min(start + linesPerPage, wrappedLines.length);
+  // ---------------------------------------------------------------- page tools
 
-      for (let i = start; i < end; i++) {
-        const line = wrappedLines[i];
-        if (line) {
-          page.drawText(line, {
-            x: MARGIN,
-            y,
-            size: FONT_SIZE,
-            font,
-            color: rgb(0.15, 0.15, 0.2),
+  static async merge(files: { uri: string }[], outputName: string, onProgress?: ProgressFn): Promise<JobResult> {
+    if (files.length < 2) throw new Error('Add at least 2 PDFs to merge.');
+    const merged = await PDFDocument.create();
+    for (let i = 0; i < files.length; i++) {
+      onProgress?.(i, files.length, `Adding file ${i + 1}`);
+      const src = await loadLib(files[i].uri);
+      const pages = await merged.copyPages(src, src.getPageIndices());
+      pages.forEach((p) => merged.addPage(p));
+    }
+    const out = await FileService.saveBytesToFile(await merged.save(), `${FileService.baseName(outputName)}.pdf`);
+    return { outputs: [out], summary: `${files.length} PDFs merged (${merged.getPageCount()} pages)` };
+  }
+
+  static async split(uri: string, name: string, range?: string, onProgress?: ProgressFn): Promise<JobResult> {
+    const src = await loadLib(uri);
+    const pages = parsePageRange(range, src.getPageCount());
+    const outputs: string[] = [];
+    for (let i = 0; i < pages.length; i++) {
+      onProgress?.(i, pages.length, `Page ${pages[i] + 1}`);
+      const doc = await PDFDocument.create();
+      const [p] = await doc.copyPages(src, [pages[i]]);
+      doc.addPage(p);
+      outputs.push(await FileService.saveBytesToFile(await doc.save(), `${FileService.baseName(name)}_page${pages[i] + 1}.pdf`));
+    }
+    return { outputs, summary: `Split into ${outputs.length} PDF file(s)` };
+  }
+
+  static async extractPages(uri: string, name: string, range: string): Promise<JobResult> {
+    if (!range.trim()) throw new Error('Enter the pages to extract, e.g. 1-3, 5');
+    const src = await loadLib(uri);
+    const pages = parsePageRange(range, src.getPageCount());
+    const doc = await PDFDocument.create();
+    (await doc.copyPages(src, pages)).forEach((p) => doc.addPage(p));
+    const out = await FileService.saveBytesToFile(await doc.save(), `${FileService.baseName(name)}_extracted.pdf`);
+    return { outputs: [out], summary: `${pages.length} page(s) extracted` };
+  }
+
+  static async rotate(uri: string, name: string, angle: 90 | 180 | 270, range?: string): Promise<JobResult> {
+    const doc = await loadLib(uri);
+    const pages = parsePageRange(range, doc.getPageCount());
+    pages.forEach((i) => {
+      const p = doc.getPage(i);
+      p.setRotation(degrees((p.getRotation().angle + angle) % 360));
+    });
+    const out = await FileService.saveBytesToFile(await doc.save(), `${FileService.baseName(name)}_rotated.pdf`);
+    return { outputs: [out], summary: `${pages.length} page(s) rotated ${angle}°` };
+  }
+
+  // ---------------------------------------------------------------- optimise & security
+
+  static async compress(uri: string, name: string, level: CompressLevel, onProgress?: ProgressFn): Promise<JobResult> {
+    const before = await FileService.fileSize(uri);
+    let bytes: Uint8Array;
+
+    if (level === 'light') {
+      // Lossless: rebuild the file with compressed object streams and no metadata.
+      const doc = await loadLib(uri);
+      doc.setProducer('');
+      doc.setCreator('');
+      bytes = await doc.save({ useObjectStreams: true });
+    } else {
+      // Lossy: re-render every page as a JPEG at reduced resolution.
+      const dpi = level === 'balanced' ? 150 : 96;
+      const quality = level === 'balanced' ? 0.72 : 0.5;
+      bytes = await withEnginePdf(uri, undefined, async (id, total) => {
+        const out = await PDFDocument.create();
+        for (let i = 0; i < total; i++) {
+          onProgress?.(i, total, `Compressing page ${i + 1}`);
+          const r = await callEngine<{ data: string; pointWidth: number; pointHeight: number }>('renderPage', {
+            id,
+            page: i,
+            scale: dpi / 72,
+            mime: 'image/jpeg',
+            quality,
           });
+          const img = await out.embedJpg(toByteArray(r.data));
+          const page = out.addPage([r.pointWidth, r.pointHeight]);
+          page.drawImage(img, { x: 0, y: 0, width: r.pointWidth, height: r.pointHeight });
         }
-        y -= LINE_HEIGHT;
-      }
-
-      // Footer page numbers
-      const footerText = `Page ${p + 1} of ${totalPages}`;
-      page.drawText(footerText, {
-        x: PAGE_WIDTH - MARGIN - 70,
-        y: MARGIN / 2,
-        size: 9,
-        font,
-        color: rgb(0.5, 0.5, 0.5),
+        return out.save({ useObjectStreams: true });
       });
     }
 
-    const pdfBytes = await pdfDoc.save();
-    return await FileService.saveBytesToFile(pdfBytes, outputName);
+    const outUri = await FileService.saveBytesToFile(bytes, `${FileService.baseName(name)}_compressed.pdf`);
+    const after = bytes.length;
+    const pct = before ? Math.round((1 - after / before) * 100) : 0;
+    return {
+      outputs: [outUri],
+      summary:
+        pct > 0
+          ? `${FileService.formatBytes(before)} → ${FileService.formatBytes(after)} (−${pct}%)`
+          : `Already optimised: ${FileService.formatBytes(before)} → ${FileService.formatBytes(after)}`,
+    };
   }
 
-  /**
-   * Helper to parse page range strings like "1-3, 5, 8-10" into 0-based indices
-   */
-  private static parsePageRange(rangeStr: string, totalPages: number): number[] {
-    const indices = new Set<number>();
-    const parts = rangeStr.split(',').map((p) => p.trim());
+  static async encrypt(uri: string, name: string, password: string): Promise<JobResult> {
+    if (!password) throw new Error('Enter a password.');
+    const doc = await loadLib(uri);
+    doc.encrypt({ userPassword: password, ownerPassword: password });
+    const out = await FileService.saveBytesToFile(await doc.save(), `${FileService.baseName(name)}_protected.pdf`);
+    return { outputs: [out], summary: 'Password protection added' };
+  }
 
-    for (const part of parts) {
-      if (!part) continue;
-      if (part.includes('-')) {
-        const [startStr, endStr] = part.split('-');
-        let start = parseInt(startStr, 10);
-        let end = endStr ? parseInt(endStr, 10) : totalPages;
+  static async decrypt(uri: string, name: string, password: string): Promise<JobResult> {
+    // Validate the password first with pdf.js (clear error on a wrong password).
+    await withEnginePdf(uri, password, async () => undefined);
+    const src = await loadLib(uri, password);
+    const doc = await PDFDocument.create();
+    (await doc.copyPages(src, src.getPageIndices())).forEach((p) => doc.addPage(p));
+    const out = await FileService.saveBytesToFile(await doc.save(), `${FileService.baseName(name)}_unlocked.pdf`);
+    return { outputs: [out], summary: 'Password removed' };
+  }
 
-        if (isNaN(start)) start = 1;
-        if (isNaN(end)) end = totalPages;
+  // ---------------------------------------------------------------- shared
 
-        start = Math.max(1, Math.min(start, totalPages));
-        end = Math.max(1, Math.min(end, totalPages));
-
-        for (let i = start; i <= end; i++) {
-          indices.add(i - 1);
-        }
-      } else {
-        const pageNum = parseInt(part, 10);
-        if (!isNaN(pageNum) && pageNum >= 1 && pageNum <= totalPages) {
-          indices.add(pageNum - 1);
-        }
-      }
-    }
-
-    return Array.from(indices).sort((a, b) => a - b);
+  /** Stamps "Page X of N" at the bottom right of every page. */
+  static async addPageNumbers(uri: string): Promise<void> {
+    const doc = await loadLib(uri);
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    const pages = doc.getPages();
+    pages.forEach((p, i) => {
+      const text = `Page ${i + 1} of ${pages.length}`;
+      const w = font.widthOfTextAtSize(text, 9);
+      p.drawText(text, { x: p.getWidth() - 40 - w, y: 22, size: 9, font, color: rgb(0.45, 0.45, 0.45) });
+    });
+    const bytes = await doc.save();
+    const { fromByteArray } = await import('base64-js');
+    const FS = await import('expo-file-system/legacy');
+    await FS.writeAsStringAsync(uri, fromByteArray(bytes), { encoding: FS.EncodingType.Base64 });
   }
 }

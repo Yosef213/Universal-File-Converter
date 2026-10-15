@@ -11,7 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import { colors } from '../theme/colors';
-import { FileService } from '../services/fileService';
+import { FileService, OUTPUT_DIR } from '../services/fileService';
 
 interface StoredFile {
   name: string;
@@ -27,8 +27,8 @@ export const HistoryScreen: React.FC = () => {
   const loadFiles = async () => {
     try {
       setLoading(true);
-      const directory = `${FileSystem.documentDirectory}converted/`;
-      const dirInfo = await FileSystem.getInfoAsync(directory);
+      await FileService.ensureOutputDir();
+      const dirInfo = await FileSystem.getInfoAsync(OUTPUT_DIR);
 
       if (!dirInfo.exists) {
         setFiles([]);
@@ -36,11 +36,11 @@ export const HistoryScreen: React.FC = () => {
         return;
       }
 
-      const fileNames = await FileSystem.readDirectoryAsync(directory);
+      const fileNames = await FileSystem.readDirectoryAsync(OUTPUT_DIR);
       const fileList: StoredFile[] = [];
 
       for (const name of fileNames) {
-        const fileUri = `${directory}${name}`;
+        const fileUri = `${OUTPUT_DIR}${name}`;
         const info = await FileSystem.getInfoAsync(fileUri);
         if (info.exists) {
           fileList.push({
@@ -67,10 +67,32 @@ export const HistoryScreen: React.FC = () => {
 
   const handleShare = async (file: StoredFile) => {
     try {
-      const mime = file.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg';
-      await FileService.shareFile(file.uri, mime);
+      await FileService.shareFile(file.uri);
     } catch {
       Alert.alert('Share Error', 'Could not open share menu.');
+    }
+  };
+
+  const handleSaveToDevice = async (file: StoredFile) => {
+    try {
+      const count = await FileService.saveToDeviceFolder([file.uri]);
+      if (count > 0) {
+        Alert.alert('Saved!', `Exported ${file.name} to device storage.`);
+      }
+    } catch {
+      Alert.alert('Save Error', 'Could not export file to device storage.');
+    }
+  };
+
+  const handleSaveAllToDevice = async () => {
+    if (!files.length) return;
+    try {
+      const count = await FileService.saveToDeviceFolder(files.map((f) => f.uri));
+      if (count > 0) {
+        Alert.alert('Saved!', `Exported ${count} file(s) to device storage.`);
+      }
+    } catch {
+      Alert.alert('Save Error', 'Could not export files.');
     }
   };
 
@@ -93,8 +115,7 @@ export const HistoryScreen: React.FC = () => {
           text: 'Delete All',
           style: 'destructive',
           onPress: async () => {
-            const directory = `${FileSystem.documentDirectory}converted/`;
-            await FileSystem.deleteAsync(directory, { idempotent: true });
+            await FileSystem.deleteAsync(OUTPUT_DIR, { idempotent: true });
             setFiles([]);
           },
         },
@@ -102,14 +123,30 @@ export const HistoryScreen: React.FC = () => {
     );
   };
 
+  const getIcon = (name: string): keyof typeof Ionicons.glyphMap => {
+    const ext = name.split('.').pop()?.toLowerCase();
+    if (ext === 'pdf') return 'document-text';
+    if (ext === 'docx' || ext === 'doc') return 'document';
+    if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') return 'grid';
+    if (ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'webp') return 'image';
+    return 'reader';
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.headerRow}>
-        <Text style={styles.title}>Converted Documents</Text>
+        <Text style={styles.title}>Converted Documents ({files.length})</Text>
         {files.length > 0 && (
-          <TouchableOpacity onPress={handleClearAll}>
-            <Text style={styles.clearAllText}>Clear All</Text>
-          </TouchableOpacity>
+          <View style={styles.topActions}>
+            <TouchableOpacity onPress={handleSaveAllToDevice} style={styles.topBtn}>
+              <Ionicons name="download-outline" size={16} color={colors.emerald} />
+              <Text style={styles.saveAllText}>Save All</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleClearAll} style={styles.topBtn}>
+              <Ionicons name="trash-outline" size={16} color={colors.rose} />
+              <Text style={styles.clearAllText}>Clear</Text>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
 
@@ -120,18 +157,14 @@ export const HistoryScreen: React.FC = () => {
           <Ionicons name="folder-open-outline" size={48} color={colors.textDim} />
           <Text style={styles.emptyTitle}>No Converted Files Yet</Text>
           <Text style={styles.emptySubtitle}>
-            Files you convert or export will appear here for quick access and sharing.
+            Files you convert or export will appear here for quick access, sharing, and saving to device storage.
           </Text>
         </View>
       ) : (
         files.map((file) => (
           <View key={file.uri} style={styles.fileCard}>
             <View style={styles.fileIconBox}>
-              <Ionicons
-                name={file.name.endsWith('.pdf') ? 'document-text' : 'image'}
-                size={24}
-                color={colors.primary}
-              />
+              <Ionicons name={getIcon(file.name)} size={22} color={colors.primary} />
             </View>
             <View style={styles.fileMeta}>
               <Text style={styles.fileName} numberOfLines={1}>
@@ -144,17 +177,24 @@ export const HistoryScreen: React.FC = () => {
             </View>
             <TouchableOpacity
               style={styles.actionBtn}
-              onPress={() => handleShare(file)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              onPress={() => handleSaveToDevice(file)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Ionicons name="share-outline" size={20} color={colors.primary} />
+              <Ionicons name="download-outline" size={19} color={colors.emerald} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={() => handleShare(file)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="share-outline" size={19} color={colors.primary} />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.actionBtn}
               onPress={() => handleDelete(file)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Ionicons name="trash-outline" size={20} color={colors.rose} />
+              <Ionicons name="trash-outline" size={19} color={colors.rose} />
             </TouchableOpacity>
           </View>
         ))
@@ -182,6 +222,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: colors.text,
+  },
+  topActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  topBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  saveAllText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.emerald,
   },
   clearAllText: {
     fontSize: 13,
@@ -241,6 +295,6 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     padding: 6,
-    marginLeft: 4,
+    marginLeft: 2,
   },
 });

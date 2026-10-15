@@ -6,10 +6,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { StudioTab } from './src/types';
 import { colors } from './src/theme/colors';
 import { Header } from './src/components/Header';
+import { EngineHost } from './src/engine/EngineHost';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { PdfStudioScreen } from './src/screens/PdfStudioScreen';
 import { ImageStudioScreen } from './src/screens/ImageStudioScreen';
-import { TextStudioScreen } from './src/screens/TextStudioScreen';
+import { DocsStudioScreen } from './src/screens/DocsStudioScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
 
 export default function App() {
@@ -18,15 +19,15 @@ export default function App() {
   const getScreenTitle = (): { title: string; subtitle: string } => {
     switch (activeTab) {
       case 'pdf':
-        return { title: 'PDF Studio', subtitle: 'Merge, Split, Extract & Rotate' };
+        return { title: 'PDF Studio', subtitle: 'Convert, Organize, Compress & Protect' };
+      case 'docs':
+        return { title: 'Word & Docs Studio', subtitle: 'Word to PDF, Text & Notes' };
       case 'image':
-        return { title: 'Image Studio', subtitle: 'Combine to PDF, Convert & Compress' };
-      case 'text':
-        return { title: 'Text Studio', subtitle: 'Type or Paste Text to Paginated PDF' };
+        return { title: 'Image Studio', subtitle: 'Combine to PDF, Convert & Resize' };
       case 'history':
-        return { title: 'Converted Files', subtitle: 'Manage & Share Exported Documents' };
+        return { title: 'Converted Documents', subtitle: 'Manage, Share & Save to Storage' };
       default:
-        return { title: 'Universal File Converter', subtitle: '100% On-Device & Private' };
+        return { title: 'Universal File Converter', subtitle: '100% On-Device & Offline' };
     }
   };
 
@@ -37,15 +38,18 @@ export default function App() {
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
         <StatusBar style="light" />
 
+        {/* Offline WebView Engine (pdf.js, mammoth, docx, SheetJS) */}
+        <EngineHost />
+
         {/* Global Header */}
         <Header title={title} subtitle={subtitle} />
 
-        {/* Main Screen Body */}
+        {/* Main Screen Content */}
         <View style={styles.content}>
           {activeTab === 'home' && <HomeScreen onNavigate={setActiveTab} />}
           {activeTab === 'pdf' && <PdfStudioScreen />}
+          {activeTab === 'docs' && <DocsStudioScreen />}
           {activeTab === 'image' && <ImageStudioScreen />}
-          {activeTab === 'text' && <TextStudioScreen />}
           {activeTab === 'history' && <HistoryScreen />}
         </View>
 
@@ -83,6 +87,21 @@ export default function App() {
 
           <TouchableOpacity
             style={styles.navItem}
+            onPress={() => setActiveTab('docs')}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name={activeTab === 'docs' ? 'reader' : 'reader-outline'}
+              size={22}
+              color={activeTab === 'docs' ? colors.primary : colors.textDim}
+            />
+            <Text style={[styles.navLabel, activeTab === 'docs' && styles.navLabelActive]}>
+              Docs
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.navItem}
             onPress={() => setActiveTab('image')}
             activeOpacity={0.7}
           >
@@ -93,21 +112,6 @@ export default function App() {
             />
             <Text style={[styles.navLabel, activeTab === 'image' && styles.navLabelActive]}>
               Images
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.navItem}
-            onPress={() => setActiveTab('text')}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={activeTab === 'text' ? 'create' : 'create-outline'}
-              size={22}
-              color={activeTab === 'text' ? colors.primary : colors.textDim}
-            />
-            <Text style={[styles.navLabel, activeTab === 'text' && styles.navLabelActive]}>
-              Notes
             </Text>
           </TouchableOpacity>
 
@@ -145,7 +149,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.cardBorder,
     paddingVertical: 10,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
   },
   navItem: {
     flex: 1,
@@ -153,7 +157,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   navLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
     color: colors.textDim,
     marginTop: 4,
