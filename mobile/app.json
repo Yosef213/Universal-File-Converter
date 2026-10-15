@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "Universal File Converter",
+    "slug": "universal-file-converter",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0F172A",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0F172A"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.universalfileconverter.app",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Required to pick photos for conversion to PDF or other image formats.",
+        "NSPhotoLibraryAddUsageDescription": "Required to save converted files and images to your device library."
+      }
+    },
+    "android": {
+      "package": "com.universalfileconverter.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0F172A",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
