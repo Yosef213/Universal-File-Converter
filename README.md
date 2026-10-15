@@ -9,7 +9,8 @@
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue?style=for-the-badge&logo=python)](https://python.org)
 [![CustomTkinter](https://img.shields.io/badge/GUI-CustomTkinter-6366F1?style=for-the-badge)](https://github.com/TomSchimansky/CustomTkinter)
 [![License: MIT](https://img.shields.io/badge/License-MIT-emerald?style=for-the-badge)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-black?style=for-the-badge)](https://github.com)
+[![Platform](https://img.shields.io/badge/Desktop-Windows%20%7C%20macOS%20%7C%20Linux-black?style=for-the-badge)](https://github.com)
+[![Mobile](https://img.shields.io/badge/Mobile-iOS%20%7C%20Android-000000?style=for-the-badge&logo=expo&logoColor=white)](mobile)
 
 </div>
 
@@ -109,28 +110,54 @@ The resulting executable will be saved in `dist/UniversalFileConverter.exe` with
 
 ---
 
+---
+
+## 📱 Mobile Application (iOS & Android)
+
+A complete companion mobile application is located in the [`mobile/`](mobile/) folder. It runs **100% on-device** with zero cloud servers or subscriptions, maintaining total privacy for all document and image operations.
+
+### Quick Start (Live on Physical Phone via Expo Go)
+
+1. Install **Expo Go** on your [iPhone / iPad](https://apps.apple.com/app/expo-go/id982107779) or [Android](https://play.google.com/store/apps/details?id=host.exp.exponent).
+2. Start the dev server:
+   ```bash
+   cd mobile
+   npx expo start
+   ```
+3. Scan the generated QR code with your iPhone Camera or Android Expo Go app to launch and test immediately!
+
+For full mobile documentation, feature list, and standalone APK/IPA compilation, see [`mobile/README.md`](mobile/README.md).
+
+---
+
 ## 🏗️ Architecture
 
 ```
 Universal-File-Converter/
-├── assets/
-│   ├── icon.ico             # Windows multi-size application icon
-│   └── icon.png             # High-res 1024x1024 vector icon
-├── main.py                  # Core application engine & CustomTkinter UI
+├── assets/                  # High-res logos and application icons
+├── mobile/                  # Native iOS & Android React Native (Expo) app
+│   ├── src/
+│   │   ├── components/      # UI components (Header, FileList, etc.)
+│   │   ├── screens/         # Studios (PDF, Image, Text, History)
+│   │   ├── services/        # 100% offline engines (pdf-lib, image)
+│   │   └── theme/           # Fluent dark palette
+│   ├── App.tsx              # Mobile root container & bottom navigation
+│   └── package.json         # Mobile dependencies
+├── main.py                  # Desktop application engine & CustomTkinter UI
 ├── UniversalConverter.pyw   # Windowless Python entrypoint (no cmd)
 ├── Launch.vbs               # Silent VBS launcher
 ├── create_shortcut.py       # Desktop shortcut installer script
 ├── build_exe.py             # PyInstaller executable builder
-├── requirements.txt         # Package dependencies
+├── requirements.txt         # Python dependencies
 ├── .gitignore               # Git exclude rules
 ├── LICENSE                  # MIT License
 └── README.md                # Documentation
 ```
 
 ### Core Design Principles
-- **Thread Safety**: UI interactions and background worker operations are decoupled through thread-safe `queue.Queue` channels.
+- **Privacy First**: Neither the desktop nor mobile application ever upload documents or images to the cloud. All computation is strictly on-device.
+- **Thread Safety**: UI interactions and background worker operations are decoupled through thread-safe channels.
 - **Fail-Safe Output**: Auto-incrementing naming ensures no file is accidentally overwritten unless explicitly enabled.
-- **Native OS Hooks**: Windows DWM API integration provides dark title bars and native taskbar icon grouping.
 
 ---
 
